@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd
 
 def wide_config():
     return st.set_page_config(layout="wide")
@@ -68,3 +69,15 @@ def set_filter_style():
         }
         </style>
         """, unsafe_allow_html=True)
+    
+def format_number(val):
+    if pd.isna(val):
+        return "N/A"
+    elif val >= 1e12:
+        return f"{val / 1e12:.1f} T"
+    elif val >= 1e9:
+        return f"{val / 1e9:.1f} B"
+    elif val >= 1e6:
+        return f"{val / 1e6:.1f} M"
+    else:
+        return f"{val:,.1f}"
