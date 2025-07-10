@@ -26,7 +26,7 @@ def format_number(val):
     else:
         return f"{val:,.0f}"
 
-# Fungsi buat bar indikator (dengan label & nilai % di sisi kanan)
+# Fungsi buat bar indikator
 def render_bar(value, max_value=100, label=""):
     if pd.isna(value):
         value_text = "N/A"
@@ -56,32 +56,69 @@ def render_bar(value, max_value=100, label=""):
         </div>
     """
 
-# Dua panel perbandingan
-for i in range(1, 3):
-    st.markdown(f"### Panel {i}")
+# Ambil semua indikator numerik (kecuali country & year)
+indicator_columns = [col for col in data.columns if col not in ["country_name", "year"] and pd.api.types.is_numeric_dtype(data[col])]
 
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        country = st.selectbox(f"Select Country {i}", countries, key=f"country_{i}")
-    with col2:
-        year = st.selectbox(f"Select Year {i}", years, key=f"year_{i}")
+# User pilih indikator yang ingin ditampilkan
+selected_indicators = st.multiselect(
+    "Pilih indikator yang ingin ditampilkan",
+    indicator_columns,
+    default=["GDP (Current USD)", "GDP Growth (% Annual)", "Tax Revenue (% of GDP)", "Public Debt (% of GDP)"]
+)
 
-    row = data[(data["country_name"] == country) & (data["year"] == year)]
-    if row.empty:
-        st.warning("Data not found for this selection.")
-        continue
-    row = row.iloc[0]
+# Pilih jumlah panel
+num_panels = st.number_input("Jumlah panel perbandingan", min_value=2, max_value=4, value=2, step=1)
 
-    # Ambil nilai indikator
-    gdp = row["GDP (Current USD)"]
-    gdp_growth = row["GDP Growth (% Annual)"]
-    tax_rev = row["Tax Revenue (% of GDP)"]
-    pub_debt = row["Public Debt (% of GDP)"]
+# Tentukan mana indikator angka dan mana yang bar (% / rasio)
+def is_numeric_only(col):
+    return "USD" in col or "Income" in col or ("GDP" in col and "%" not in col)
 
-    # Tampilkan GDP dan bar indikator lainnya
-    st.markdown(f"**GDP:** {format_number(gdp)} USD", unsafe_allow_html=True)
-    st.markdown(render_bar(gdp_growth, max_value=15, label="GDP Growth (% Annual)"), unsafe_allow_html=True)
-    st.markdown(render_bar(tax_rev, max_value=50, label="Tax Revenue (% of GDP)"), unsafe_allow_html=True)
-    st.markdown(render_bar(pub_debt, max_value=200, label="Public Debt (% of GDP)"), unsafe_allow_html=True)
+# Siapkan max_value per kolom berdasarkan data
+max_dict = {}
+for col in selected_indicators:
+    max_val = data[col].max()
+    if "growth" in col.lower():
+        max_dict[col] = 15
+    elif "tax" in col.lower():
+        max_dict[col] = 50
+    elif "debt" in col.lower():
+        max_dict[col] = 200
+    elif "%" in col:
+        max_dict[col] = min(100, max_val + 10)
+    else:
+        max_dict[col] = max_val + (0.1 * max_val)
 
-    st.markdown("---")
+# Fungsi render tiap panel
+def render_panel(panel, i):
+    with panel:
+        st.markdown(f"### Panel {i}")
+
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            country = st.selectbox(f"Select Country {i}", countries, key=f"country_{i}")
+        with col2:
+            year = st.selectbox(f"Select Year {i}", years, key=f"year_{i}")
+
+        row = data[(data["country_name"] == country) & (data["year"] == year)]
+        if row.empty:
+            st.warning("Data not found for this selection.")
+            return
+        row = row.iloc[0]
+
+        # Tampilkan indikator angka dulu
+        for col in selected_indicators:
+            if is_numeric_only(col):
+                val = row[col]
+                st.markdown(f"**{col}:** {format_number(val)}", unsafe_allow_html=True)
+
+        # Lalu tampilkan bar indikator
+        for col in selected_indicators:
+            if not is_numeric_only(col):
+                val = row[col]
+                max_val = max_dict.get(col, 100)
+                st.markdown(render_bar(val, label=col, max_value=max_val), unsafe_allow_html=True)
+
+# Buat kolom panel dinamis & render
+panels = st.columns(num_panels)
+for i in range(num_panels):
+    render_panel(panels[i], i + 1)
